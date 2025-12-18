@@ -1,106 +1,40 @@
-name: Frontend CI/CD - Vite -> ACR -> AKS
+name: Deploy Frontend to App Engine
 
 on:
   push:
+    branches: [ main ]
     paths:
-      - 'frontend/**'
-  workflow_dispatch:
-
-env:
-  IMAGE_NAME: ${{ secrets.ACR_NAME }}.azurecr.io/student-portal-frontend
-  TAG: ${{ github.sha }}
-
-permissions:
-  contents: read
-  security-events: write
-  id-token: write
-  packages: write
+      - "frontend/**"
+      - ".github/workflows/deploy-frontend.yml"
 
 jobs:
-  build-and-test:
+  deploy-frontend:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
+    - name: Authenticate to GCP
+      uses: google-github-actions/auth@v2
+      with:
+        credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-      - name: Install and build
-        run: |
-          cd frontend
-          npm ci
-          npm run build
+    - name: Set up gcloud
+      uses: google-github-actions/setup-gcloud@v2
+      with:
+        project_id: ${{ secrets.GCP_PROJECT_ID }}
 
-      - name: Lint (ESLint)
-        run: |
-          cd frontend
-          npm install --no-save eslint || true
-          npx eslint --ext .js,.jsx,.ts,.tsx src || true
+    - name: Install dependencies
+      run: |
+        cd frontend
+        npm ci
 
-      - name: CodeQL (JS)
-        uses: github/codeql-action/init@v2
-        with:
-          languages: javascript
-      - uses: github/codeql-action/analyze@v2
+    - name: Build frontend
+      run: |
+        cd frontend
+        npm run build
 
-  build-and-push:
-    needs: build-and-test
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Azure Login
-        uses: azure/login@v2
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
-
-      - name: Login to ACR
-        uses: docker/login-action@v2
-        with:
-          registry: ${{ secrets.ACR_NAME }}.azurecr.io
-          username: ${{ secrets.ACR_NAME }}
-          password: ${{ steps.azure_login.outputs.client-secret || secrets.AZURE_PASSWORD }}
-
-      - name: Build and push Docker image
-        run: |
-          cd frontend
-          docker build -t $IMAGE_NAME:${TAG} -f Dockerfile .
-          docker push $IMAGE_NAME:${TAG}
-          docker tag $IMAGE_NAME:${TAG} $IMAGE_NAME:latest
-          docker push $IMAGE_NAME:latest
-
-      - name: Trivy image scan (fail on HIGH/CRITICAL)
-        uses: aquasecurity/trivy-action@v1
-        with:
-          image-ref: ${{ secrets.ACR_NAME }}.azurecr.io/student-portal-frontend:${{ github.sha }}
-          format: 'table'
-          exit-code: '1'
-          severity: 'CRITICAL,HIGH'
-
-  deploy:
-    needs: build-and-push
-    runs-on: ubuntu-latest
-    environment: production
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Azure Login
-        uses: azure/login@v2
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
-
-      - name: Get AKS credentials
-        run: |
-          az aks get-credentials --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} --name ${{ secrets.AKS_CLUSTER_NAME }} --overwrite-existing
-
-      - name: Apply Kubernetes manifests (frontend)
-        run: |
-          kubectl apply -f k8s/frontend-deployment.yaml
-          kubectl apply -f k8s/frontend-service.yaml
-          kubectl rollout status deployment/student-portal-frontend --namespace default --timeout=180s
-
+    - name: Deploy frontend to App Engine
+      run: |
+        gcloud app deploy frontend/app.yaml --quiet
