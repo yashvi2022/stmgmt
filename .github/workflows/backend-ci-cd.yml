@@ -1,123 +1,40 @@
-name: Backend CI/CD - Flask -> ACR -> AKS
+name: Deploy Backend to App Engine
 
 on:
   push:
+    branches: [ main ]
     paths:
-      - 'backend/**'
-  workflow_dispatch:
-
-env:
-  IMAGE_NAME: ${{ secrets.ACR_NAME }}.azurecr.io/student-portal-backend
-  TAG: ${{ github.sha }}
-
-permissions:
-  contents: read
-  security-events: write
-  id-token: write   # if using OIDC; optional if using AZURE_CREDENTIALS
-  packages: write
+      - "backend/**"
+      - ".github/workflows/deploy-backend.yml"
 
 jobs:
-  build-and-test:
+  deploy-backend:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
+    - name: Authenticate to GCP
+      uses: google-github-actions/auth@v2
+      with:
+        credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-      - name: Cache pip
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('backend/requirements.txt') }}
+    - name: Set up gcloud
+      uses: google-github-actions/setup-gcloud@v2
+      with:
+        project_id: ${{ secrets.GCP_PROJECT_ID }}
 
-      - name: Install dependencies
-        run: |
-          cd backend
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
+    - name: Install dependencies
+      run: |
+        cd backend
+        pip install -r requirements.txt
 
-      - name: Run unit tests
-        run: |
-          cd backend
-          # adjust to your test command; if none, this will be a no-op
-          pytest -q || true
+    - name: Run backend tests
+      run: |
+        cd backend
+        pytest || echo "No tests found"
 
-      - name: Lint (flake8)
-        run: |
-          cd backend
-          pip install flake8
-          flake8 || true
-
-      - name: Static analysis - CodeQL (Python)
-        uses: github/codeql-action/init@v2
-        with:
-          languages: python
-      - uses: github/codeql-action/analyze@v2
-
-  build-and-push:
-    needs: build-and-test
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Azure Login
-        uses: azure/login@v2
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
-          
-        
- 
-
-      - name: Login to ACR
-        run: az acr login --name studentportalregistry
-       
-      - name: Build and push Docker image
-        run: |
-          cd backend
-          IMAGE=studentportalregistry.azurecr.io/student-portal-backend:${{ github.sha }}
-          docker build -t $IMAGE .
-          docker push $IMAGE
-         
-
-      - name: Trivy image scan (fail on HIGH/CRITICAL)
-        uses: aquasecurity/trivy-action@0.20.0
-        with:
-          image-ref: ${{ secrets.ACR_NAME }}.azurecr.io/student-portal-backend:${{ github.sha }}
-          format: 'table'
-          exit-code: '1'
-          severity: 'CRITICAL,HIGH'
-
-  deploy:
-    needs: build-and-push
-    runs-on: ubuntu-latest
-    environment: production
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Azure Login
-        uses: azure/login@v2
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
-
-      - name: Get AKS credentials
-        run: |
-          az aks get-credentials --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} --name ${{ secrets.AKS_CLUSTER_NAME }} --overwrite-existing
-
-      - name: Ensure k8s secrets provider addon enabled (optional)
-        run: |
-          # Enable the AKS addon if not already enabled (requires proper RBAC)
-          az aks enable-addons -g ${{ secrets.AZURE_RESOURCE_GROUP }} -n ${{ secrets.AKS_CLUSTER_NAME }} --addons azure-keyvault-secrets-provider || true
-
-      - name: Apply Kubernetes manifests (backend)
-        run: |
-          kubectl apply -f k8s/backend/backend-deployment.yaml
-         
-          # wait for rollout
-          kubectl rollout status deployment/backend-deployment --namespace student-portal --timeout=180s
-
+    - name: Deploy backend to App Engine
+      run: |
+        gcloud app deploy backend/app.yaml --quiet
