@@ -1,0 +1,11 @@
+runtime: python311
+
+handlers:
+  # Serve static assets
+  - url: /assets
+    static_dir: dist/assets
+
+  # Serve index.html for everything else (React routing)
+  - url: /.*
+    static_files: dist/index.html
+    upload: dist/index.html

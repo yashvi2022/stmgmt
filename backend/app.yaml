@@ -1,0 +1,16 @@
+runtime: python311
+service: backend
+
+entrypoint: gunicorn -b :$PORT app:app
+
+automatic_scaling:
+  min_instances: 1
+  max_instances: 3
+
+env_variables:
+  FLASK_ENV: "production"
+  MONGO_URI: "mongodb+srv://yashvi:yashvi20@cluster0.pjxnxdr.mongodb.net/student_portal?retryWrites=true&w=majority"
+
+vpc_access_connector:
+  name: projects/model-shelter-479506-u6/locations/asia-south1/connectors/vpc-connector
+  egress_setting: all-traffic
