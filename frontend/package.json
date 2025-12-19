@@ -8,6 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "start": "node server.js"
+    "lint": "eslint ."
   },
   "dependencies": {
     "express": "^4.19.2",
@@ -21,3 +22,4 @@
     "vite": "^5.0.8"
   }
 }
+
