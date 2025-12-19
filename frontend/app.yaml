@@ -1,11 +1,14 @@
 runtime: python311
 
 handlers:
-  # Serve static assets
-  - url: /assets
-    static_dir: dist/assets
+  # Serve Vite static assets (JS/CSS)
+  - url: /assets/(.*)
+    static_files: dist/assets/\1
+    upload: dist/assets/(.*)
+    http_headers:
+      Cache-Control: no-cache
 
-  # Serve index.html for everything else (React routing)
+  # Serve index.html for SPA routes
   - url: /.*
     static_files: dist/index.html
     upload: dist/index.html
