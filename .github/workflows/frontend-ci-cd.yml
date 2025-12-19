@@ -30,10 +30,30 @@ jobs:
         cd frontend
         npm ci
 
+  
+
+    - name: Lint frontend code
+      working-directory: frontend
+      run: npm run lint
+
+    # ======================
+    # 🧪 TEST STAGE
+    # ======================
+    - name: Run frontend tests
+      working-directory: frontend
+      run: npm test -- --run
+
+    # ======================
+    # 🔐 SECURITY SCAN STAGE
+    # ======================
+    - name: Security scan (npm audit)
+      working-directory: frontend
+      run: npm audit --audit-level=high    
+
     - name: Build frontend
       run: |
         cd frontend
-        npm run build
+        npm run build  
 
     - name: Deploy frontend to App Engine
       run: |
