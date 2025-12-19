@@ -1,11 +1,16 @@
-name: Deploy Frontend to App Engine
+name: Secure Deploy Frontend to App Engine
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - main
     paths:
       - "frontend/**"
-      - ".github/workflows/deploy-frontend.yml"
+      - ".github/workflows/deploy-frontend-secure.yml"
+
+permissions:
+  id-token: write   # REQUIRED for OIDC
+  contents: read
 
 jobs:
   deploy-frontend:
@@ -15,26 +20,40 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Authenticate to GCP
+    # 🔐 Secure authentication (NO JSON KEY)
+    - name: Authenticate to Google Cloud (OIDC)
       uses: google-github-actions/auth@v2
       with:
-        credentials_json: ${{ secrets.GCP_SA_KEY }}
+        workload_identity_provider: projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/github-pool/providers/github
+        service_account: github-actions@PROJECT_ID.iam.gserviceaccount.com
 
     - name: Set up gcloud
       uses: google-github-actions/setup-gcloud@v2
       with:
-        project_id: ${{ secrets.GCP_PROJECT_ID }}
+        project_id: PROJECT_ID
 
-    - name: Install dependencies
-      run: |
-        cd frontend
-        npm ci
+    # 📦 Install dependencies
+    - name: Install frontend dependencies
+      working-directory: frontend
+      run: npm ci
 
+    # 🧹 Lint (code quality)
+    - name: Lint frontend
+      working-directory: frontend
+      run: npm run lint
+
+    # 🏗️ Build frontend
     - name: Build frontend
-      run: |
-        cd frontend
-        npm run build
+      working-directory: frontend
+      run: npm run build
 
+    # 🔍 Verify build output (important)
+    - name: Verify build output
+      run: ls -la frontend/dist
+
+    # 🚀 Deploy without auto-promote (safe)
     - name: Deploy frontend to App Engine
       run: |
-        gcloud app deploy frontend/app.yaml --quiet
+        gcloud app deploy frontend/app.yaml \
+          --quiet \
+          --no-promote
